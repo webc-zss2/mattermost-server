@@ -5,6 +5,7 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -115,6 +116,8 @@ func (ch *Channels) ServePluginPublicRequest(w http.ResponseWriter, r *http.Requ
 }
 
 func (ch *Channels) servePluginRequest(w http.ResponseWriter, r *http.Request, handler func(*plugin.Context, http.ResponseWriter, *http.Request)) {
+	params := mux.Vars(r)
+	pluginID := params["plugin_id"]
 	token := ""
 	context := &plugin.Context{
 		RequestId:      model.NewId(),
@@ -138,15 +141,17 @@ func (ch *Channels) servePluginRequest(w http.ResponseWriter, r *http.Request, h
 
 	// Mattermost-Plugin-ID can only be set by inter-plugin requests
 	r.Header.Del("Mattermost-Plugin-ID")
-
 	r.Header.Del("Mattermost-User-Id")
+	r.Header.Del("Mattermost-Scopes")
+
 	if token != "" {
-		session, err := New(ServerConnector(ch)).GetSession(token)
+		sc := New(ServerConnector(ch))
+		session, appErr := sc.GetSession(token)
 		defer ch.srv.userService.ReturnSessionToPool(session)
 
 		csrfCheckPassed := false
 
-		if session != nil && err == nil && cookieAuth && r.Method != "GET" {
+		if session != nil && appErr == nil && cookieAuth && r.Method != "GET" {
 			sentToken := ""
 
 			if r.Header.Get(model.HeaderCsrfToken) == "" {
@@ -194,9 +199,32 @@ func (ch *Channels) servePluginRequest(w http.ResponseWriter, r *http.Request, h
 			csrfCheckPassed = true
 		}
 
-		if (session != nil && session.Id != "") && err == nil && csrfCheckPassed {
+		if (session != nil && session.Id != "") && appErr == nil && csrfCheckPassed {
 			r.Header.Set("Mattermost-User-Id", session.UserId)
 			context.SessionId = session.Id
+
+			if oAuthAppID := session.Props[model.SessionPropOAuthAppID]; oAuthAppID != "" {
+				oAuthApp, appError := sc.GetOAuthApp(oAuthAppID)
+				if appError != nil {
+					ch.srv.Log.Debug("cannot get oauthApp from session", mlog.String("appID", oAuthAppID), mlog.Err(appError))
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+
+				if !oAuthApp.Scopes.IsPluginInScope(pluginID) {
+					ch.srv.Log.Debug("plugin not in scopes", mlog.Any("scopes", oAuthApp.Scopes), mlog.String("plugin", pluginID))
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+
+				b, err := json.Marshal(oAuthApp.Scopes)
+				if err != nil {
+					ch.srv.Log.Debug("cannot marshal scopes", mlog.Any("scopes", oAuthApp.Scopes), mlog.Err(err))
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				r.Header.Set("Mattermost-Scopes", string(b))
+			}
 		}
 	}
 
@@ -210,14 +238,12 @@ func (ch *Channels) servePluginRequest(w http.ResponseWriter, r *http.Request, h
 	r.Header.Del(model.HeaderAuth)
 	r.Header.Del("Referer")
 
-	params := mux.Vars(r)
-
 	subpath, _ := utils.GetSubpathFromConfig(ch.srv.Config())
 
 	newQuery := r.URL.Query()
 	newQuery.Del("access_token")
 	r.URL.RawQuery = newQuery.Encode()
-	r.URL.Path = strings.TrimPrefix(r.URL.Path, path.Join(subpath, "plugins", params["plugin_id"]))
+	r.URL.Path = strings.TrimPrefix(r.URL.Path, path.Join(subpath, "plugins", pluginID))
 
 	handler(context, w, r)
 }

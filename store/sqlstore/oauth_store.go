@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/pkg/errors"
 
 	"github.com/mattermost/mattermost-server/v6/model"
@@ -30,6 +31,8 @@ func newSqlOAuthStore(sqlStore *SqlStore) store.OAuthStore {
 		table.ColMap("CallbackUrls").SetMaxSize(1024)
 		table.ColMap("Homepage").SetMaxSize(256)
 		table.ColMap("IconURL").SetMaxSize(512)
+		table.ColMap("Scopes").SetMaxSize(1024)
+		table.ColMap("AppsFrameworkAppID").SetMaxSize(26).SetDefaultConstraint(model.NewString(""))
 
 		tableAuth := db.AddTableWithName(model.AuthData{}, "OAuthAuthData").SetKeys(false, "Code")
 		tableAuth.ColMap("UserId").SetMaxSize(26)
@@ -69,9 +72,9 @@ func (as SqlOAuthStore) SaveApp(app *model.OAuthApp) (*model.OAuthApp, error) {
 	}
 
 	if _, err := as.GetMasterX().NamedExec(`INSERT INTO OAuthApps
-		(Id, CreatorId, CreateAt, UpdateAt, ClientSecret, Name, Description, IconURL, CallbackUrls, Homepage, IsTrusted)
+		(Id, CreatorId, CreateAt, UpdateAt, ClientSecret, Name, Description, IconURL, CallbackUrls, Homepage, IsTrusted, Scopes, AppsFrameworkAppID)
 		VALUES
-		(:Id, :CreatorId, :CreateAt, :UpdateAt, :ClientSecret, :Name, :Description, :IconURL, :CallbackUrls, :Homepage, :IsTrusted)`, app); err != nil {
+		(:Id, :CreatorId, :CreateAt, :UpdateAt, :ClientSecret, :Name, :Description, :IconURL, :CallbackUrls, :Homepage, :IsTrusted, :Scopes, :AppsFrameworkAppID)`, app); err != nil {
 		return nil, errors.Wrap(err, "failed to save OAuthApp")
 	}
 	return app, nil
@@ -100,7 +103,7 @@ func (as SqlOAuthStore) UpdateApp(app *model.OAuthApp) (*model.OAuthApp, error) 
 	res, err := as.GetMasterX().NamedExec(`UPDATE OAuthApps
 		SET UpdateAt=:UpdateAt, ClientSecret=:ClientSecret, Name=:Name,
 			Description=:Description, IconURL=:IconURL, CallbackUrls=:CallbackUrls,
-			Homepage=:Homepage, IsTrusted=:IsTrusted
+			Homepage=:Homepage, IsTrusted=:IsTrusted, Scopes=:Scopes, AppsFrameworkAppID=:AppsFrameworkAppID
 		WHERE Id=:Id`, app)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to update OAuthApp with id=%s", app.Id)
@@ -249,6 +252,19 @@ func (as SqlOAuthStore) UpdateAccessData(accessData *model.AccessData) (*model.A
 func (as SqlOAuthStore) RemoveAccessData(token string) error {
 	if _, err := as.GetMasterX().Exec("DELETE FROM OAuthAccessData WHERE Token = ?", token); err != nil {
 		return errors.Wrapf(err, "failed to delete OAuthAccessData with token=%s", token)
+	}
+	return nil
+}
+
+func (as SqlOAuthStore) RemoveMultipleAccessData(tokens []string) error {
+	query, args, err := as.getQueryBuilder().Delete("OAuthAccessData").Where(sq.Eq{"Token": tokens}).ToSql()
+	if err != nil {
+		return errors.Wrap(err, "sessions_tosql")
+	}
+
+	_, err = as.GetMaster().Exec(query, args...)
+	if err != nil {
+		return errors.Wrap(err, "failed to remove oauth access data")
 	}
 	return nil
 }

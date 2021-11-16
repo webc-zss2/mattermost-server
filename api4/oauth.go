@@ -13,15 +13,15 @@ import (
 )
 
 func (api *API) InitOAuth() {
-	api.BaseRoutes.OAuthApps.Handle("", api.APISessionRequired(createOAuthApp)).Methods("POST")
-	api.BaseRoutes.OAuthApp.Handle("", api.APISessionRequired(updateOAuthApp)).Methods("PUT")
-	api.BaseRoutes.OAuthApps.Handle("", api.APISessionRequired(getOAuthApps)).Methods("GET")
-	api.BaseRoutes.OAuthApp.Handle("", api.APISessionRequired(getOAuthApp)).Methods("GET")
-	api.BaseRoutes.OAuthApp.Handle("/info", api.APISessionRequired(getOAuthAppInfo)).Methods("GET")
-	api.BaseRoutes.OAuthApp.Handle("", api.APISessionRequired(deleteOAuthApp)).Methods("DELETE")
-	api.BaseRoutes.OAuthApp.Handle("/regen_secret", api.APISessionRequired(regenerateOAuthAppSecret)).Methods("POST")
+	api.BaseRoutes.OAuthApps.Handle("", api.APISessionRequiredWithDenyScope(createOAuthApp)).Methods("POST")
+	api.BaseRoutes.OAuthApp.Handle("", api.APISessionRequiredWithDenyScope(updateOAuthApp)).Methods("PUT")
+	api.BaseRoutes.OAuthApps.Handle("", api.APISessionRequiredWithDenyScope(getOAuthApps)).Methods("GET")
+	api.BaseRoutes.OAuthApp.Handle("", api.APISessionRequiredWithDenyScope(getOAuthApp)).Methods("GET")
+	api.BaseRoutes.OAuthApp.Handle("/info", api.APISessionRequiredWithDenyScope(getOAuthAppInfo)).Methods("GET")
+	api.BaseRoutes.OAuthApp.Handle("", api.APISessionRequiredWithDenyScope(deleteOAuthApp)).Methods("DELETE")
+	api.BaseRoutes.OAuthApp.Handle("/regen_secret", api.APISessionRequiredWithDenyScope(regenerateOAuthAppSecret)).Methods("POST")
 
-	api.BaseRoutes.User.Handle("/oauth/apps/authorized", api.APISessionRequired(getAuthorizedOAuthApps)).Methods("GET")
+	api.BaseRoutes.User.Handle("/oauth/apps/authorized", api.APISessionRequiredWithDenyScope(getAuthorizedOAuthApps)).Methods("GET")
 }
 
 func createOAuthApp(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -30,6 +30,8 @@ func createOAuthApp(c *Context, w http.ResponseWriter, r *http.Request) {
 		c.SetInvalidParam("oauth_app")
 		return
 	}
+
+	oauthApp.Scopes = oauthApp.Scopes.Normalize()
 
 	auditRec := c.MakeAuditRecord("createOAuthApp", audit.Fail)
 	defer c.LogAuditRec(auditRec)
@@ -82,6 +84,8 @@ func updateOAuthApp(c *Context, w http.ResponseWriter, r *http.Request) {
 		c.SetInvalidParam("oauth_app")
 		return
 	}
+
+	oauthApp.Scopes = oauthApp.Scopes.Normalize()
 
 	// The app being updated in the payload must be the same one as indicated in the URL.
 	if oauthApp.Id != c.Params.AppId {

@@ -1,0 +1,15 @@
+{
+  "scanSettings": {
+    "configMode": "AUTO",
+	"configExternalURL": "https://saas.whitesourcesoftware.com",
+	"projectToken": "161a5463f18e4ecfb2a7aff63baa197484f8bcb7f6634db59824d0ec6d2f5182",
+	"baseBranches": []
+  },
+  "checkRunSettings": {
+    "displayMode": "diff",
+    "vulnerableCheckRunConclusionLevel": "failure"
+  },
+  "issueSettings": {
+    "minSeverityLevel": "LOW"
+  }
+}

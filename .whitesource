@@ -2,7 +2,7 @@
   "scanSettings": {
     "configMode": "AUTO",
 	"configExternalURL": "https://saas.whitesourcesoftware.com",
-	"projectToken": "161a5463f18e4ecfb2a7aff63baa197484f8bcb7f6634db59824d0ec6d2f5182",
+	"projectToken": "0f883cadebe9408d910e0850e697729d1d99146d25de4854866df5d0f8b355c1",
 	"baseBranches": []
   },
   "checkRunSettings": {
